@@ -12,8 +12,10 @@ from pyglet.window import mouse
 # ================================================== #
 fpath = r"SPR_WhiteGL000ToGL255_2436x752.gif"
 fpath2 = r"SPR_RedGL000ToGL255_2436x752.gif"
-animation = pyglet.image.load_animation(fpath)
-animation2 = pyglet.image.load_animation(fpath2)
+#animation = pyglet.image.load_animation(fpath)
+#animation2 = pyglet.image.load_animation(fpath2)
+animation = pyglet.image.load("RGB_R255.bmp")
+animation2 = pyglet.image.load("RGB_R128.bmp")
 animSprite = pyglet.sprite.Sprite(animation)
 w = animSprite.width
 h = animSprite.height
@@ -47,6 +49,14 @@ def on_mouse_press (x, y, button, modifiers):
 
     print(f"({x}, {y}, {button}, {modifiers})")
     
+    # ================================================== #
+    #   Updating Static Image
+    # ================================================== #
+
+
+    # ================================================== #
+    #   Updating Dynamic Image
+    # ================================================== #
     if ((count % 2) == 0):
         animSprite.image = animation2
     else:
