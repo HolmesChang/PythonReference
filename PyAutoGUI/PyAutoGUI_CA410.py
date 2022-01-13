@@ -72,6 +72,6 @@ PositionFileSavingLevel03 = (tmp.left + int(tmp.width/2), tmp.top + int(tmp.heig
 gui.moveTo(*PositionFileSavingLevel03)
 gui.doubleClick()
 time.sleep(0.5)
-gui.write("Test.csv")
+gui.write("WhiteGL000ToGL032st.csv")
 time.sleep(0.5)
 gui.press("enter")
