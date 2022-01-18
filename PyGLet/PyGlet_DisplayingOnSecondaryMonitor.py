@@ -1,5 +1,6 @@
 import pyglet
 from pyglet.window import mouse
+from pyglet import clock
 
 # ================================================== #
 #   Displaying Static Image
@@ -10,12 +11,16 @@ from pyglet.window import mouse
 # ================================================== #
 #   Displaying Dynamic Image
 # ================================================== #
-fpath = r"SPR_WhiteGL000ToGL255_2436x752.gif"
-fpath2 = r"SPR_RedGL000ToGL255_2436x752.gif"
+#fpath = r"SPR_WhiteGL000ToGL255_2436x752.gif"
+#fpath2 = r"SPR_RedGL000ToGL255_2436x752.gif"
 #animation = pyglet.image.load_animation(fpath)
 #animation2 = pyglet.image.load_animation(fpath2)
-animation = pyglet.image.load("RGB_R255.bmp")
-animation2 = pyglet.image.load("RGB_R128.bmp")
+
+animation = pyglet.image.load("RGB_W255.bmp")
+animation2 = pyglet.image.load("RGB_W128.bmp")
+
+#animation = pyglet.image.load_animation(r"giphy.gif")
+
 animSprite = pyglet.sprite.Sprite(animation)
 w = animSprite.width
 h = animSprite.height
@@ -66,5 +71,25 @@ def on_mouse_press (x, y, button, modifiers):
     #animSprite.draw()
 
     count += 1
+
+def Swap (dt):
+    print(dt)
+
+    global count
+
+    # ================================================== #
+    #   Updating Dynamic Image
+    # ================================================== #
+    if ((count % 2) == 0):
+        animSprite.image = animation2
+    else:
+        animSprite.image = animation
+    
+    #window.clear()
+    #animSprite.draw()
+
+    count += 1
+
+#clock.schedule_interval(Swap, 0.0166)
 
 pyglet.app.run()
