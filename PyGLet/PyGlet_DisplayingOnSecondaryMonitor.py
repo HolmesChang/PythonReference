@@ -17,7 +17,7 @@ from pyglet import clock
 #animation2 = pyglet.image.load_animation(fpath2)
 
 animation = pyglet.image.load("RGB_W255.bmp")
-animation2 = pyglet.image.load("RGB_W128.bmp")
+animation2 = pyglet.image.load("RGB_W000.bmp")
 
 #animation = pyglet.image.load_animation(r"giphy.gif")
 

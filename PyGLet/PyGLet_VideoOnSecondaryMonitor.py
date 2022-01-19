@@ -17,7 +17,7 @@ screens = display.get_screens()
 window = pyglet.window.Window(fullscreen=True, screen=screens[1])
 
 # video path
-vidPath = r"D:\Publication\Python Reference\OpenCV4\test.mp4"
+vidPath = r"D:\Publication\Python Reference\OpenCV4\OD_W000_W255_W192.mp4"
 
 # creating a media player object
 player = pyglet.media.Player()
