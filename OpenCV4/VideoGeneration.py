@@ -6,7 +6,7 @@ import cv2
 def VideoOD (fdir: str="", fname: str="",
              RES_V: int=None, RES_H: int=None, RES_C: int=None,
              FPS: int=60, Duration: int=3,
-             Conditions: List[np.uint8]=[]):
+             Conditions: List[List[np.uint8]]=[]):
     width = RES_H
     hieght = RES_V
     channel = RES_C
