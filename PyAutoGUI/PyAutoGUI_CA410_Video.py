@@ -16,6 +16,7 @@ from PyAstronomy import pyaC
 import cv2
 import skvideo.io
 import pyautogui as gui
+import matplotlib.pyplot as plt
 
 # ================================================== #
 # Importation Of Self Development Module
@@ -29,23 +30,34 @@ clock = TicToc()
 # Sourcing Of Measurement Table Of GTG RT
 pairs = []
 tmp = []
-for GL1 in np.append(np.arange(0, 255, 48), 255):
+for GL1 in np.append(np.arange(96, 255, 48), 255):
     for GL2 in np.append(np.arange(GL1, 255, 48), 255):
         tmp = []
         if (GL2 == GL1):
             continue
         
+        if ((GL1 == 96) and (not (GL2 == 255))):
+            continue
+        
         tmp.append(GL1)
         tmp.append(GL2)
         pairs.append(tmp)
-#pairs = [[0, 192]]
+#pairs = [[144, 192]]
 
 EnOD = True
-EnODAutoOptimize = True
-IsODDone = False
-ODStart = -8
-ODStep = 2
-ODEnd = 64
+EnODAutoOptimize = False
+IsODRisingDone = False
+IsODFallingDone = False
+ODStartRising = -8
+ODStepRising = 2
+ODEndRising = 32
+ODStartFalling = +8
+ODStepFalling = -2
+ODEndFalling = -32
+FactorRising = 0.98
+FactorFalling = 0.98
+MPRTRisingLocalMinCntLimit = 2
+MPRTFallingLocalMinCntLimit = 2
 TmpOD = {}
 TmpOD["From"] = 0
 TmpOD["To"] = 0
@@ -53,6 +65,10 @@ TmpOD["OD"] = 0
 ODTable = []
 
 imgtest = np.zeros((2436, 752, 3), dtype=np.uint8)
+
+RES_Time = 0.00001
+tFrame = 0.016667
+UnitRT = 0.001
 
 # ================================================== #
 # Declaration ANd Definition Of This Module Function
@@ -137,10 +153,21 @@ def ActivateTargetWindow (wins, targetTitle, wait=1):
     
     return False
 
-def CalcMPRT (fdir: str=r"C:\Users\HolmesChang\Desktop", fname: str="", RES_Time: np.float64=0.00001, tFrame: np.float64=0.016667, UnitRT: np.float64=0.001, Thres: np.float64=0.0025):
+def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment\Sample_001_Center_20220218_OD_After_TuningGPUFPS",
+              fname: str="", RES_Time: np.float64=0.00001, tFrame: np.float64=0.016667, UnitRT: np.float64=0.001, Thres: np.float64=0.0025):
     if (fname == ""):
         print("Please Input Correct File Name")
         return None
+    
+    CntParsingFile = 5
+    while (not os.path.isfile(fdir+ "\\" + fname)):
+        if (CntParsingFile == 0):
+            print("File Parsing Error. Exiting.")
+            exit()
+        
+        print("{} Not Found".format((fdir+ "\\" + fname)))
+        CntParsingFile -= 1
+        time.sleep(1)
     
     data_raw = np.loadtxt(fname=(fdir+ "\\" + fname), delimiter=",", skiprows=9, usecols=(0, 1))
     
@@ -196,6 +223,12 @@ def CalcMPRT (fdir: str=r"C:\Users\HolmesChang\Desktop", fname: str="", RES_Time
         IsDataOS = True
     # OverShooting Detection/
     
+    # UnderShooting Detection
+    IsDataUS = False
+    if (Min < Min_Plateau):
+        IsDataUS = True
+    # UnderShooting Detection/
+    
     PointTransition = []
     for x in Xi_10:
         PointTransition.append(("10", x+1))
@@ -207,8 +240,9 @@ def CalcMPRT (fdir: str=r"C:\Users\HolmesChang\Desktop", fname: str="", RES_Time
     CntRisingEdge = 0
     FallingTime = 0
     CntFallingEdge = 0
-    if (not IsDataOS):
-        print("From {:03} To {:03} To {:03} No OD".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+    if ((not IsDataOS) and (not IsDataUS)):
+        print("From {:03} To {:03} To {:03} No OverShooting".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+        print("From {:03} To {:03} To {:03} No UnderShooting".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
         for (Index, Point) in enumerate(PointTransition[0:-1]):
             if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90")):
                 RisingTime += (PointTransition[Index+1][1] - Point[1])
@@ -219,10 +253,11 @@ def CalcMPRT (fdir: str=r"C:\Users\HolmesChang\Desktop", fname: str="", RES_Time
                 CntFallingEdge += 1
                 continue
         
-        return (1.25 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time)))
-    else:
+        return ((1.25 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (1.25 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
+    elif (IsDataOS and (not IsDataUS)):
         if (Max <= 1.1*Max_Plateau):
-            print("From {:03} To {:03} To {:03} OD Less Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+            print("From {:03} To {:03} To {:03} OverShooting Less Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+            print("From {:03} To {:03} To {:03} No UnderShooting".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
             for (Index, Point) in enumerate(PointTransition[0:-2]):
                 if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
                     ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
@@ -234,9 +269,10 @@ def CalcMPRT (fdir: str=r"C:\Users\HolmesChang\Desktop", fname: str="", RES_Time
                     CntFallingEdge += 1
                     continue
             
-            return (RisingTime / CntRisingEdge / (UnitRT/RES_Time))
+            return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1.25 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
         else:
-            print("From {:03} To {:03} To {:03} OD More Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+            print("From {:03} To {:03} To {:03} OverShooting More Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+            print("From {:03} To {:03} To {:03} No UnderShooting".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
             for (Index, Point) in enumerate(PointTransition[0:-2]):
                 if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
                     RisingTime += (PointTransition[Index+2][1] - Point[1])
@@ -247,7 +283,81 @@ def CalcMPRT (fdir: str=r"C:\Users\HolmesChang\Desktop", fname: str="", RES_Time
                     CntFallingEdge += 1
                     continue
             
-            return (RisingTime / CntRisingEdge / (UnitRT/RES_Time))
+            return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1.25 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
+    elif ((not IsDataOS) and (IsDataUS)):
+        if (Min >= 0.9*Min_Plateau):
+            print("From {:03} To {:03} To {:03} No OverShooting".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+            print("From {:03} To {:03} To {:03} UnderShooting Less Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
+            for (Index, Point) in enumerate(PointTransition[0:-2]):
+                if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90")):
+                    RisingTime += (PointTransition[Index+1][1] - Point[1])
+                    CntRisingEdge += 1
+                    continue
+                if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
+                    ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
+                    FallingTime += (ListIndexPeak[0] - Point[1])
+                    CntFallingEdge += 1
+                    continue
+            
+            return ((1.25 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
+        else:
+            print("From {:03} To {:03} To {:03} No OverShooting".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+            print("From {:03} To {:03} To {:03} UnderShooting More Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
+            for (Index, Point) in enumerate(PointTransition[0:-2]):
+                if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90")):
+                    RisingTime += (PointTransition[Index+1][1] - Point[1])
+                    CntRisingEdge += 1
+                    continue
+                if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
+                    FallingTime += (PointTransition[Index+2][1] - Point[1])
+                    CntFallingEdge += 1
+                    continue
+            
+            return ((1.25 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
+    else:
+        for (Index, Point) in enumerate(PointTransition[0:-2]):
+            # Rising
+            if (Max < Max_Plateau):
+                print("From {:03} To {:03} To {:03} No OverShooting".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+                if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90")):
+                    RisingTime += (PointTransition[Index+1][1] - Point[1])
+                    CntRisingEdge += 1
+                    continue
+            elif (Max <= 1.1*Max_Plateau):
+                print("From {:03} To {:03} To {:03} OverShooting Less Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+                if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
+                    ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
+                    RisingTime += (ListIndexPeak[0] - Point[1])
+                    CntRisingEdge += 1
+                    continue
+            else:
+                print("From {:03} To {:03} To {:03} OverShooting More Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
+                if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
+                    RisingTime += (PointTransition[Index+2][1] - Point[1])
+                    CntRisingEdge += 1
+                    continue
+            # Falling
+            if (Min > Min_Plateau):
+                print("From {:03} To {:03} To {:03} No UnderShooting".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
+                if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10")):
+                    FallingTime += (PointTransition[Index+1][1] - Point[1])
+                    CntFallingEdge += 1
+                    continue
+            elif (Min >= 0.9*Min_Plateau):
+                print("From {:03} To {:03} To {:03} UnderShooting Less Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
+                if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
+                    ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
+                    FallingTime += (ListIndexPeak[0] - Point[1])
+                    CntFallingEdge += 1
+                    continue
+            else:
+                print("From {:03} To {:03} To {:03} UnderShooting More Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
+                if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
+                    FallingTime += (PointTransition[Index+2][1] - Point[1])
+                    CntFallingEdge += 1
+                    continue
+        
+        return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
 
 # ================================================== #
 # Testing Of This Module
@@ -256,11 +366,14 @@ if (__name__ == "__main__"):
     # Setting Of Sourcing Of Testing Video
     (RES_V, RES_H, RES_C) = (2436, 752, 3)
     (FPS, Duration) = (60, 8)
-    (fdir_video, fname_video) = (r"D:", r"RES_{}_{}_{}_FPS_{}_GL1_{:02}_{:03}_GL2_{:02}_{:03}_GL3_{:02}_{:03}.mp4")
+    #(fdir_video, fname_video) = (r"D:", r"RES_{}_{}_{}_FPS_{}_GL1_{:02}_{:03}_GL2_{:02}_{:03}_GL3_{:02}_{:03}.mp4")
+    (fdir_video, fname_video) = (r"D:", r"RES_{}_{}_{}_FPS_{}_GL1_{:02}_{:03}_GL2_{:02}_{:03}_GL3_{:02}_{:03}_GL4_{:02}_{:03}_GL5_{:02}_{:03}.mp4")
     lib = "FFMPEG"
-    tEnd_GL1 = 10
-    tEnd_GL2 = 11
-    tEnd_GL3 = 20
+    tEnd_GL1 = 5
+    tEnd_GL2 = 6
+    tEnd_GL3 = 15
+    tEnd_GL4 = 16
+    tEnd_GL5 = 20
     
     # Setting Of GUI Automation Of CA410
     targetTitle = r"PC Software for Color Analyzer"
@@ -285,13 +398,18 @@ if (__name__ == "__main__"):
         print("\n\n\n")
         print(pair)
         
-        IsODDone = False
-        OD = ODStart
-        TmpOD["From"] = pair[0]
-        TmpOD["To"] = pair[1]
-        TmpOD["OD"] = pair[0]
-        TmpMPRT = 100000
-        while (not IsODDone):
+        IsODRisingDone = False
+        IsODFallingDone = False
+        ODRising = ODStartRising
+        ODFalling = ODStartFalling
+        TmpOD["From"] = 0
+        TmpOD["To"] = 0
+        TmpOD["OD"] = 0
+        TmpMPRTRising = 100000
+        TmpMPRTFalling = 100000
+        MPRTRisingLocalMin = 0
+        MPRTFallingLocalMin = 0
+        while (not (IsODRisingDone and IsODFallingDone)):
             before = time.time()
             
             # -------------------------------------------------- #
@@ -299,21 +417,26 @@ if (__name__ == "__main__"):
             # -------------------------------------------------- #
             if (not EnOD):
                 Conditions = [[tEnd_GL1, pair[0]],
-                            [tEnd_GL3, pair[1]]]
+                              [tEnd_GL2, pair[1]],
+                              [tEnd_GL3, pair[1]],
+                              [tEnd_GL4, pair[0]],
+                              [tEnd_GL5, pair[0]]]
                 
-                if (not os.path.isfile(fdir_video + "\\" + fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[1][0], Conditions[1][1]))):
+                if (not os.path.isfile(fdir_video + "\\" + fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]))):
                     VideoOD(RES_V=RES_V, RES_H=RES_H, RES_C=RES_C, lib=lib,
                             FPS=FPS, Duration=Duration, Conditions=Conditions,
-                            fdir=fdir_video, fname=fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[1][0], Conditions[1][1]))
+                            fdir=fdir_video, fname=fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]))
             else:
                 Conditions = [[tEnd_GL1, pair[0]],
-                            [tEnd_GL2, np.clip(pair[1]+OD, 0, 255)],
-                            [tEnd_GL3, pair[1]]]
+                              [tEnd_GL2, np.clip(pair[1]+ODRising, 0, 255)],
+                              [tEnd_GL3, pair[1]],
+                              [tEnd_GL4, np.clip(pair[0]+ODFalling, 0, 255)],
+                              [tEnd_GL5, pair[0]]]
                 
-                if (not os.path.isfile(fdir_video + "\\" + fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1]))):
+                if (not os.path.isfile(fdir_video + "\\" + fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]))):
                     VideoOD(RES_V=RES_V, RES_H=RES_H, RES_C=RES_C, lib=lib,
                             FPS=FPS, Duration=Duration, Conditions=Conditions,
-                            fdir=fdir_video, fname=fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1]))
+                            fdir=fdir_video, fname=fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]))
             
             # -------------------------------------------------- #
             # Displaying Testing Video
@@ -322,12 +445,12 @@ if (__name__ == "__main__"):
             
             if (not EnOD):
                 SP_PythonVLC = subprocess.Popen(["vlc", "--directx-device={\\.\DISPLAY1}", "--fullscreen", "--play-and-exit",
-                                                fpath_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[1][0], Conditions[1][1])])
+                                                fpath_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])])
             else:
                 SP_PythonVLC = subprocess.Popen(["vlc", "--directx-device={\\.\DISPLAY1}", "--fullscreen", "--play-and-exit",
-                                                fpath_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1])])
+                                                fpath_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])])
             
-            time.sleep(1)
+            time.sleep(1.5)
             
             # -------------------------------------------------- #
             # Checking CA410 Software Before Measurement
@@ -367,7 +490,8 @@ if (__name__ == "__main__"):
             # -------------------------------------------------- #
             # Waiting For Ending Of SubProcess
             # -------------------------------------------------- #
-            SP_PythonVLC.wait()
+            #SP_PythonVLC.wait()
+            time.sleep(5)
             
             # -------------------------------------------------- #
             # Checking CA410 Software After Measurement
@@ -423,9 +547,9 @@ if (__name__ == "__main__"):
             gui.doubleClick()
             time.sleep(0.5)
             if (not EnOD):
-                gui.write((fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[1][0], Conditions[1][1])).replace("mp4", "csv"))
+                gui.write((fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("mp4", "csv"))
             else:
-                gui.write((fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1])).replace("mp4", "csv"))
+                gui.write((fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("mp4", "csv"))
             time.sleep(0.5)
             gui.press("enter")
             time.sleep(3)
@@ -438,36 +562,73 @@ if (__name__ == "__main__"):
             # Determining Whether IsODDone
             # -------------------------------------------------- #
             if (not EnOD):
-                IsODDone = True
+                IsODRisingDone = True
+                IsODFallingDone = True
             else:
-                if ((OD < ODEnd) and (not (Conditions[1][1] == 255))):
-                    if (EnODAutoOptimize):
-                        Tmp = CalcMPRT(fname=(fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1])).replace("mp4", "csv"))
-                        print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[0][1], Conditions[1][1], Conditions[2][1], Tmp))
-                        if (TmpMPRT > Tmp):
-                            TmpMPRT = Tmp
-                            OD = np.clip(OD + ODStep, 0, 255)
+                if (EnODAutoOptimize):
+                    Tmp = CalcMPRT(fname=(fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("mp4", "csv"))
+                # Checking If Rising OD Done
+                if (not IsODRisingDone):
+                    if ((ODRising < ODEndRising) and (not (Conditions[1][1] == 255))):
+                        if (EnODAutoOptimize):
+                            print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[0][1], Conditions[2][1], Conditions[1][1], Tmp[0]))
+                            if (TmpMPRTRising > FactorRising*Tmp[0]):
+                                TmpMPRTRising = Tmp[0]
+                                ODRising += ODStepRising
+                            else:
+                                TmpOD["From"] = Conditions[0][1]
+                                TmpOD["To"] = Conditions[2][1]
+                                TmpOD["OD"] = Conditions[1][1] - ODStepRising
+                                TmpOD["MPRT"] = TmpMPRTRising
+                                ODTable.append(TmpOD.copy())
+                                IsODRisingDone = True
                         else:
+                            ODRising += ODStepRising
+                    else:
+                        if (EnODAutoOptimize):
+                            print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[0][1], Conditions[2][1], Conditions[1][1], Tmp[0]))
+                            if (TmpMPRTRising > FactorRising*Tmp[0]):
+                                TmpMPRTRising = Tmp[0]
+                                TmpOD["OD"] = Conditions[1][1]
+                            else:
+                                TmpOD["OD"] = Conditions[1][1] - ODStepRising
+                            
                             TmpOD["From"] = Conditions[0][1]
                             TmpOD["To"] = Conditions[2][1]
-                            TmpOD["OD"] = Conditions[1][1]
-                            TmpOD["MPRT"] = TmpMPRT
+                            TmpOD["MPRT"] = TmpMPRTRising
                             ODTable.append(TmpOD.copy())
-                            IsODDone = True
+                        IsODRisingDone = True
+                # Check If Falling OD Done
+                if (not IsODFallingDone):
+                    if ((ODFalling > ODEndFalling) and (not (Conditions[3][1] == 0))):
+                        if (EnODAutoOptimize):
+                            print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[2][1], Conditions[4][1], Conditions[3][1], Tmp[1]))
+                            if (TmpMPRTFalling > FactorFalling*Tmp[1]):
+                                TmpMPRTFalling = Tmp[1]
+                                ODFalling += ODStepFalling
+                            else:
+                                TmpOD["From"] = Conditions[2][1]
+                                TmpOD["To"] = Conditions[4][1]
+                                TmpOD["OD"] = Conditions[3][1] - ODStepFalling
+                                TmpOD["MPRT"] = TmpMPRTFalling
+                                ODTable.append(TmpOD.copy())
+                                IsODFallingDone = True
+                        else:
+                            ODFalling += ODStepFalling
                     else:
-                        OD = np.clip(OD + ODStep, 0, 255)
-                else:
-                    Tmp = CalcMPRT(fname=(fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1])).replace("mp4", "csv"))
-                    print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[0][1], Conditions[1][1], Conditions[2][1], Tmp))
-                    if (TmpMPRT > Tmp):
-                        TmpMPRT = Tmp
-                    
-                    TmpOD["From"] = Conditions[0][1]
-                    TmpOD["To"] = Conditions[2][1]
-                    TmpOD["OD"] = Conditions[1][1]
-                    TmpOD["MPRT"] = TmpMPRT
-                    ODTable.append(TmpOD.copy())
-                    IsODDone = True
+                        if (EnODAutoOptimize):
+                            print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[2][1], Conditions[4][1], Conditions[3][1], Tmp[1]))
+                            if (TmpMPRTFalling > FactorFalling*Tmp[1]):
+                                TmpMPRTFalling = Tmp[1]
+                                TmpOD["OD"] = Conditions[3][1]
+                            else:
+                                TmpOD["OD"] = Conditions[3][1] - ODStepFalling
+                            
+                            TmpOD["From"] = Conditions[2][1]
+                            TmpOD["To"] = Conditions[4][1]
+                            TmpOD["MPRT"] = TmpMPRTFalling
+                            ODTable.append(TmpOD.copy())
+                        IsODFallingDone = True
             
             after = time.time()
             
@@ -476,8 +637,23 @@ if (__name__ == "__main__"):
     MinimizeTargetWindow(wins, targetTitle)
     print("Measurement Done!")
     
-    for ElementOD in ODTable:
-        print(ElementOD)
+    if (EnOD and EnODAutoOptimize):
+        for ElementOD in ODTable:
+            print(ElementOD)
     
     clock.toc()
     
+    if (EnOD and EnODAutoOptimize):
+        RowLabel = ["{:03}".format(x) for x in np.append(np.arange(0, 255, 48), 255)]
+        ColLabel = ["{:03}".format(x) for x in np.append(np.arange(0, 255, 48), 255)]
+        DataODMPRT = np.empty((len(RowLabel), len(ColLabel)), dtype=object)
+        DataODMPRT[:] = "N/A"
+        for Record in ODTable:
+            Row = RowLabel.index("{:03}".format(Record["From"]))
+            Col = RowLabel.index("{:03}".format(Record["To"]))
+            DataODMPRT[Row, Col] = "{:03}/{}".format(Record["OD"], float("{:.4f}".format(Record["MPRT"])))
+
+        plt.table(cellText=DataODMPRT, rowLabels=RowLabel, colLabels=ColLabel, loc="center", rowLoc="center", colLoc="center", cellLoc="center", fontsize=30)
+        plt.axis("off")
+        plt.tight_layout()
+        plt.show()
