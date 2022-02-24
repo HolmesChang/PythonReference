@@ -30,13 +30,10 @@ clock = TicToc()
 # Sourcing Of Measurement Table Of GTG RT
 pairs = []
 tmp = []
-for GL1 in np.append(np.arange(96, 255, 48), 255):
+for GL1 in np.append(np.arange(0, 255, 48), 255):
     for GL2 in np.append(np.arange(GL1, 255, 48), 255):
         tmp = []
         if (GL2 == GL1):
-            continue
-        
-        if ((GL1 == 96) and (not (GL2 == 255))):
             continue
         
         tmp.append(GL1)
@@ -45,7 +42,7 @@ for GL1 in np.append(np.arange(96, 255, 48), 255):
 #pairs = [[144, 192]]
 
 EnOD = True
-EnODAutoOptimize = False
+EnODAutoOptimize = True
 IsODRisingDone = False
 IsODFallingDone = False
 ODStartRising = -8
@@ -54,8 +51,8 @@ ODEndRising = 32
 ODStartFalling = +8
 ODStepFalling = -2
 ODEndFalling = -32
-FactorRising = 0.98
-FactorFalling = 0.98
+FactorRising = 1
+FactorFalling = 1
 MPRTRisingLocalMinCntLimit = 2
 MPRTFallingLocalMinCntLimit = 2
 TmpOD = {}
@@ -84,6 +81,10 @@ def VideoOD (fdir: str="", fname: str="",
     fps = FPS
     sec = Duration
     
+    #print("StreamGL:")
+    #for Condition in Conditions:
+    #    print(Condition)
+    
     if (lib == "OpenCV"):
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
@@ -104,13 +105,18 @@ def VideoOD (fdir: str="", fname: str="",
         video.release()
     
     if (lib == "FFMPEG"):
+        codec = "libx264"
+        if (fname[-3::] == "avi"):
+            codec = "rawvideo"
+        
         writer = skvideo.io.FFmpegWriter(fdir + "\\" + fname,
-                                         inputdict={'-r': str(fps), '-s':'{}x{}'.format(width, height)},
+                                         inputdict={'-r': str(fps), '-s':'{}x{}'.format(width, height), '-pix_fmt': 'rgb24'},
                                          outputdict={
                                             '-r': str(fps),
-                                            '-vcodec': 'libx264',  #use the h.264 codec
+                                            '-vcodec': codec,  #use the h.264 codec #'libx264' #'rawvideo'
+                                            '-pix_fmt': 'rgb24',
                                             '-crf': '0',           #set the constant rate factor to 0, which is lossless
-                                            '-preset':'ultrafast'   #the slower the better compression, in princple, try #veryslow #fast
+                                            '-preset':'ultrafast'   #the slower the better compression, in princple, try #veryslow #fast #ultrafast
                                                                 #other options see https://trac.ffmpeg.org/wiki/Encode/H.264
                                          }
         )
@@ -140,7 +146,7 @@ def MinimizeTargetWindow (wins, targetTitle, wait=0.5):
     
     return False
 
-def ActivateTargetWindow (wins, targetTitle, wait=1):
+def ActivateTargetWindow (wins, targetTitle, wait=0.5):
     for win in wins:
         if (win.title == targetTitle):
             win.activate()
@@ -153,8 +159,8 @@ def ActivateTargetWindow (wins, targetTitle, wait=1):
     
     return False
 
-def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment\Sample_001_Center_20220218_OD_After_TuningGPUFPS",
-              fname: str="", RES_Time: np.float64=0.00001, tFrame: np.float64=0.016667, UnitRT: np.float64=0.001, Thres: np.float64=0.0025):
+def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment\Sample_001_Center_20220224_OD_002",
+              fname: str="", RES_Time: np.float64=0.00001, tFrame: np.float64=0.016667, UnitRT: np.float64=0.001, Thres: np.float64=0.0025, Method: str="Median", Conditions: List[List[np.uint8]]=[]):
     if (fname == ""):
         print("Please Input Correct File Name")
         return None
@@ -205,7 +211,7 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                 IsZeroStart = False
     
     for Plateau in ListPlateau:
-        if (Plateau[1] < tFrame):
+        if (Plateau[1] < tFrame*100000):
             Y_New_Diff[Plateau[0]:np.sum(Plateau)] = Thres
     
     Min_Plateau = np.min((Y_New_LPF_60Hz[1::])[Y_New_Diff == 0])
@@ -214,19 +220,26 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
     
     Min = np.min(Y_New_LPF_60Hz)
     Max = np.max(Y_New_LPF_60Hz)
-    (Xc_10, Xi_10) = pyaC.zerocross1d(X_New[(len(Kernel)-1)::], Y_New_LPF_60Hz-(Min+0.1*(Max-Min)), getIndices=True)
-    (Xc_90, Xi_90) = pyaC.zerocross1d(X_New[(len(Kernel)-1)::], Y_New_LPF_60Hz-(Min+0.9*(Max-Min)), getIndices=True)
+    
+    (Xc_10, Xi_10) = pyaC.zerocross1d(X_New[(len(Kernel)-1)::], Y_New_LPF_60Hz-(Min_Plateau+0.1*(Max_Plateau-Min_Plateau)), getIndices=True)
+    (Xc_90, Xi_90) = pyaC.zerocross1d(X_New[(len(Kernel)-1)::], Y_New_LPF_60Hz-(Min_Plateau+0.9*(Max_Plateau-Min_Plateau)), getIndices=True)
+    
+    print(f"Min_Plateau={Min_Plateau}, Max_Plateau={Max_Plateau}, Min={Min}, Max={Max}")
     
     # OverShooting Detection
     IsDataOS = False
     if (Max > Max_Plateau):
+        #print("OverShooting")
         IsDataOS = True
+        (Xc_OS_90, Xi_OS_90) = pyaC.zerocross1d(X_New[(len(Kernel)-1)::], Y_New_LPF_60Hz-(Min_Plateau+1.1*(Max_Plateau-Min_Plateau)), getIndices=True)
     # OverShooting Detection/
     
     # UnderShooting Detection
     IsDataUS = False
     if (Min < Min_Plateau):
+        #print("UnderShooting")
         IsDataUS = True
+        (Xc_US_10, Xi_US_10) = pyaC.zerocross1d(X_New[(len(Kernel)-1)::], Y_New_LPF_60Hz-(Min_Plateau-0.1*(Max_Plateau-Min_Plateau)), getIndices=True)
     # UnderShooting Detection/
     
     PointTransition = []
@@ -234,7 +247,17 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
         PointTransition.append(("10", x+1))
     for x in Xi_90:
         PointTransition.append(("90", x+1))
+    if (IsDataOS):
+        for x in Xi_OS_90:
+            PointTransition.append(("OS", x+1))
+    if (IsDataUS):
+        for x in Xi_US_10:
+            PointTransition.append(("US", x+1))
     PointTransition.sort(key=lambda x: x[1])
+    
+    # Debugging
+    for Point in PointTransition:
+        print(Point)
     
     RisingTime = 0
     CntRisingEdge = 0
@@ -255,14 +278,22 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
         
         return ((1.25 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (1.25 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
     elif (IsDataOS and (not IsDataUS)):
-        if (Max <= 1.1*Max_Plateau):
+        if (Max <= (Min_Plateau+1.1*(Max_Plateau-Min_Plateau))):
             print("From {:03} To {:03} To {:03} OverShooting Less Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
             print("From {:03} To {:03} To {:03} No UnderShooting".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
             for (Index, Point) in enumerate(PointTransition[0:-2]):
-                if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
-                    ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
-                    RisingTime += (ListIndexPeak[0] - Point[1])
-                    CntRisingEdge += 1
+                try:
+                    if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
+                        ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
+                        if ((ListIndexPeak[0][0]-Index) < 2*tFrame):
+                            RisingTime += (ListIndexPeak[0][0] - Point[1])
+                            CntRisingEdge += 1
+                        else:
+                            RisingTime += (PointTransition[Index+1][1] - Point[1])
+                            CntRisingEdge += 1
+                        continue
+                except Exception as e:
+                    print(e)
                     continue
                 if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10")):
                     FallingTime += (PointTransition[Index+1][1] - Point[1])
@@ -274,9 +305,13 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
             print("From {:03} To {:03} To {:03} OverShooting More Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
             print("From {:03} To {:03} To {:03} No UnderShooting".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
             for (Index, Point) in enumerate(PointTransition[0:-2]):
-                if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
-                    RisingTime += (PointTransition[Index+2][1] - Point[1])
-                    CntRisingEdge += 1
+                try:
+                    if ((Point[0] == "10") and (PointTransition[Index+2][0] == "OS") and (PointTransition[Index+3][0] == "OS")):
+                        RisingTime += (PointTransition[Index+3][1] - Point[1])
+                        CntRisingEdge += 1
+                        continue
+                except Exception as e:
+                    print(e)
                     continue
                 if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10")):
                     FallingTime += (PointTransition[Index+1][1] - Point[1])
@@ -285,7 +320,7 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
             
             return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1.25 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
     elif ((not IsDataOS) and (IsDataUS)):
-        if (Min >= 0.9*Min_Plateau):
+        if (Min >= (Min_Plateau-0.1*(Max_Plateau-Min_Plateau))):
             print("From {:03} To {:03} To {:03} No OverShooting".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
             print("From {:03} To {:03} To {:03} UnderShooting Less Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
             for (Index, Point) in enumerate(PointTransition[0:-2]):
@@ -293,10 +328,18 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     RisingTime += (PointTransition[Index+1][1] - Point[1])
                     CntRisingEdge += 1
                     continue
-                if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
-                    ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
-                    FallingTime += (ListIndexPeak[0] - Point[1])
-                    CntFallingEdge += 1
+                try:
+                    if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
+                        ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
+                        if ((ListIndexPeak[0][0]-Index) < 1.5*tFrame):
+                            FallingTime += (ListIndexPeak[0][0] - Point[1])
+                            CntFallingEdge += 1
+                        else:
+                            FallingTime += (PointTransition[Index+1][1] - Point[1])
+                            CntFallingEdge += 1
+                        continue
+                except Exception as e:
+                    print(e)
                     continue
             
             return ((1.25 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
@@ -308,9 +351,13 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     RisingTime += (PointTransition[Index+1][1] - Point[1])
                     CntRisingEdge += 1
                     continue
-                if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
-                    FallingTime += (PointTransition[Index+2][1] - Point[1])
-                    CntFallingEdge += 1
+                try:
+                    if ((Point[0] == "90") and (PointTransition[Index+2][0] == "US") and (PointTransition[Index+3][0] == "US")):
+                        FallingTime += (PointTransition[Index+3][1] - Point[1])
+                        CntFallingEdge += 1
+                        continue
+                except Exception as e:
+                    print(e)
                     continue
             
             return ((1.25 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
@@ -323,18 +370,30 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     RisingTime += (PointTransition[Index+1][1] - Point[1])
                     CntRisingEdge += 1
                     continue
-            elif (Max <= 1.1*Max_Plateau):
+            elif (Max <= (Min_Plateau+1.1*(Max_Plateau-Min_Plateau))):
                 print("From {:03} To {:03} To {:03} OverShooting Less Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
-                if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
-                    ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
-                    RisingTime += (ListIndexPeak[0] - Point[1])
-                    CntRisingEdge += 1
+                try:
+                    if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
+                        ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
+                        if ((ListIndexPeak[0][0]-Index) < 1.5*tFrame):
+                            RisingTime += (ListIndexPeak[0][0] - Point[1])
+                            CntRisingEdge += 1
+                        else:
+                            RisingTime += (PointTransition[Index+1][1] - Point[1])
+                            CntRisingEdge += 1
+                        continue
+                except Exception as e:
+                    print(e)
                     continue
             else:
                 print("From {:03} To {:03} To {:03} OverShooting More Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
-                if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
-                    RisingTime += (PointTransition[Index+2][1] - Point[1])
-                    CntRisingEdge += 1
+                try:
+                    if ((Point[0] == "10") and (PointTransition[Index+2][0] == "OS") and (PointTransition[Index+3][0] == "OS")):
+                        RisingTime += (PointTransition[Index+3][1] - Point[1])
+                        CntRisingEdge += 1
+                        continue
+                except Exception as e:
+                    print(e)
                     continue
             # Falling
             if (Min > Min_Plateau):
@@ -343,18 +402,30 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     FallingTime += (PointTransition[Index+1][1] - Point[1])
                     CntFallingEdge += 1
                     continue
-            elif (Min >= 0.9*Min_Plateau):
+            elif (Min >= (Min_Plateau-0.1*(Max_Plateau-Min_Plateau))):
                 print("From {:03} To {:03} To {:03} UnderShooting Less Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
-                if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
-                    ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
-                    FallingTime += (ListIndexPeak[0] - Point[1])
-                    CntFallingEdge += 1
+                try:
+                    if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
+                        ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
+                        if ((ListIndexPeak[0][0]-Index) < 1.5*tFrame):
+                            FallingTime += (ListIndexPeak[0][0] - Point[1])
+                            CntFallingEdge += 1
+                        else:
+                            FallingTime += (PointTransition[Index+1][1] - Point[1])
+                            CntFallingEdge += 1
+                        continue
+                except Exception as e:
+                    print(e)
                     continue
             else:
                 print("From {:03} To {:03} To {:03} UnderShooting More Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
-                if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
-                    FallingTime += (PointTransition[Index+2][1] - Point[1])
-                    CntFallingEdge += 1
+                try:
+                    if ((Point[0] == "90") and (PointTransition[Index+2][0] == "US") and (PointTransition[Index+3][0] == "US")):
+                        FallingTime += (PointTransition[Index+3][1] - Point[1])
+                        CntFallingEdge += 1
+                        continue
+                except Exception as e:
+                    print(e)
                     continue
         
         return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
@@ -367,7 +438,7 @@ if (__name__ == "__main__"):
     (RES_V, RES_H, RES_C) = (2436, 752, 3)
     (FPS, Duration) = (60, 8)
     #(fdir_video, fname_video) = (r"D:", r"RES_{}_{}_{}_FPS_{}_GL1_{:02}_{:03}_GL2_{:02}_{:03}_GL3_{:02}_{:03}.mp4")
-    (fdir_video, fname_video) = (r"D:", r"RES_{}_{}_{}_FPS_{}_GL1_{:02}_{:03}_GL2_{:02}_{:03}_GL3_{:02}_{:03}_GL4_{:02}_{:03}_GL5_{:02}_{:03}.mp4")
+    (fdir_video, fname_video) = (r"D:", r"RES_{}_{}_{}_FPS_{}_GL1_{:02}_{:03}_GL2_{:02}_{:03}_GL3_{:02}_{:03}_GL4_{:02}_{:03}_GL5_{:02}_{:03}.avi")
     lib = "FFMPEG"
     tEnd_GL1 = 5
     tEnd_GL2 = 6
@@ -409,6 +480,10 @@ if (__name__ == "__main__"):
         TmpMPRTFalling = 100000
         MPRTRisingLocalMin = 0
         MPRTFallingLocalMin = 0
+        MPRTRisingBuf = [100000]*3
+        MPRTFallingBuf = [100000]*3
+        MPRTRisingBufPointer = 0
+        MPRTFallingBufPointer = 0
         while (not (IsODRisingDone and IsODFallingDone)):
             before = time.time()
             
@@ -444,13 +519,23 @@ if (__name__ == "__main__"):
             fpath_video = fdir_video + "\\" + fname_video
             
             if (not EnOD):
-                SP_PythonVLC = subprocess.Popen(["vlc", "--directx-device={\\.\DISPLAY1}", "--fullscreen", "--play-and-exit",
+                # Using VLC
+                #SP_PythonVLC = subprocess.Popen(["vlc", "--directx-device={\\.\DISPLAY1}", "--fullscreen", "--play-and-exit",
+                #                                fpath_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])])
+                
+                # Using MPV Player
+                SP_MPVPlayer = subprocess.Popen(["mpv", "--fs", "--fs-screen=1",
                                                 fpath_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])])
             else:
-                SP_PythonVLC = subprocess.Popen(["vlc", "--directx-device={\\.\DISPLAY1}", "--fullscreen", "--play-and-exit",
+                # Using VLC
+                #SP_PythonVLC = subprocess.Popen(["vlc", "--directx-device={\\.\DISPLAY1}", "--fullscreen", "--play-and-exit",
+                #                                fpath_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])])
+                
+                # Using MPV Player
+                SP_MPVPlayer = subprocess.Popen(["mpv", "--fs", "--fs-screen=1",
                                                 fpath_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])])
             
-            time.sleep(1.5)
+            #time.sleep(1.5)
             
             # -------------------------------------------------- #
             # Checking CA410 Software Before Measurement
@@ -464,21 +549,22 @@ if (__name__ == "__main__"):
             # -------------------------------------------------- #
             #   Triggering Measurement
             # -------------------------------------------------- #
-            """
-            CntMeasurement = 5
+            
+            CntMeasurement = 3
             while (CntMeasurement):
                 try:
                     CntMeasurement -= 1
                     ActivateTargetWindow(wins, targetTitle)
                     gui.click(fname_MeasurementIdle)
                     gui.moveTo(origin)
-                    time.sleep(1)
+                    #time.sleep(1)
                 except:
                     if (CntMeasurement == 0):
                         print("GUI Component Not Found")
                         exit()
                 else:
                     break
+            
             """
             try:
                 gui.click(fname_MeasurementIdle)
@@ -486,12 +572,15 @@ if (__name__ == "__main__"):
             except:
                 print("GUI Component Not Found")
                 exit()
+            """
             
             # -------------------------------------------------- #
             # Waiting For Ending Of SubProcess
             # -------------------------------------------------- #
             #SP_PythonVLC.wait()
-            time.sleep(5)
+            SP_MPVPlayer.wait()
+            #time.sleep(5)
+            os.remove(fdir_video + "\\" + fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]))
             
             # -------------------------------------------------- #
             # Checking CA410 Software After Measurement
@@ -547,9 +636,9 @@ if (__name__ == "__main__"):
             gui.doubleClick()
             time.sleep(0.5)
             if (not EnOD):
-                gui.write((fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("mp4", "csv"))
+                gui.write((fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("avi", "csv"))
             else:
-                gui.write((fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("mp4", "csv"))
+                gui.write((fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("avi", "csv"))
             time.sleep(0.5)
             gui.press("enter")
             time.sleep(3)
@@ -566,7 +655,13 @@ if (__name__ == "__main__"):
                 IsODFallingDone = True
             else:
                 if (EnODAutoOptimize):
-                    Tmp = CalcMPRT(fname=(fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("mp4", "csv"))
+                    Tmp = CalcMPRT(fname=(fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("avi", "csv"), Conditions=Conditions)
+                    MPRTRisingBuf[int(MPRTRisingBufPointer)] = Tmp[0]
+                    MPRTRisingBufPointer += 1
+                    MPRTRisingBufPointer %= 3
+                    MPRTFallingBuf[int(MPRTFallingBufPointer)] = Tmp[1]
+                    MPRTFallingBufPointer += 1
+                    MPRTFallingBufPointer %= 3
                 # Checking If Rising OD Done
                 if (not IsODRisingDone):
                     if ((ODRising < ODEndRising) and (not (Conditions[1][1] == 255))):
@@ -576,12 +671,16 @@ if (__name__ == "__main__"):
                                 TmpMPRTRising = Tmp[0]
                                 ODRising += ODStepRising
                             else:
-                                TmpOD["From"] = Conditions[0][1]
-                                TmpOD["To"] = Conditions[2][1]
-                                TmpOD["OD"] = Conditions[1][1] - ODStepRising
-                                TmpOD["MPRT"] = TmpMPRTRising
-                                ODTable.append(TmpOD.copy())
-                                IsODRisingDone = True
+                                if ((MPRTRisingBuf[int((MPRTRisingBufPointer+2)%3)] > MPRTRisingBuf[int((MPRTRisingBufPointer+1)%3)]) and (MPRTRisingBuf[int((MPRTRisingBufPointer+2)%3)] > MPRTRisingBuf[int((MPRTRisingBufPointer+0)%3)])):
+                                    TmpOD["From"] = Conditions[0][1]
+                                    TmpOD["To"] = Conditions[2][1]
+                                    TmpOD["OD"] = Conditions[1][1] - 2*ODStepRising
+                                    TmpOD["MPRT"] = MPRTRisingBuf[int(MPRTRisingBufPointer)]#TmpMPRTRising
+                                    ODTable.append(TmpOD.copy())
+                                    IsODRisingDone = True
+                                else:
+                                    TmpMPRTRising = Tmp[0]
+                                    ODRising += ODStepRising
                         else:
                             ODRising += ODStepRising
                     else:
@@ -607,12 +706,16 @@ if (__name__ == "__main__"):
                                 TmpMPRTFalling = Tmp[1]
                                 ODFalling += ODStepFalling
                             else:
-                                TmpOD["From"] = Conditions[2][1]
-                                TmpOD["To"] = Conditions[4][1]
-                                TmpOD["OD"] = Conditions[3][1] - ODStepFalling
-                                TmpOD["MPRT"] = TmpMPRTFalling
-                                ODTable.append(TmpOD.copy())
-                                IsODFallingDone = True
+                                if ((MPRTFallingBuf[int((MPRTFallingBufPointer+2)%3)] > MPRTFallingBuf[int((MPRTFallingBufPointer+1)%3)]) and (MPRTFallingBuf[int((MPRTFallingBufPointer+2)%3)] > MPRTFallingBuf[int((MPRTFallingBufPointer+0)%3)])):
+                                    TmpOD["From"] = Conditions[2][1]
+                                    TmpOD["To"] = Conditions[4][1]
+                                    TmpOD["OD"] = Conditions[3][1] - 2*ODStepFalling
+                                    TmpOD["MPRT"] = MPRTFallingBuf[int(MPRTFallingBufPointer)] #TmpMPRTFalling
+                                    ODTable.append(TmpOD.copy())
+                                    IsODFallingDone = True
+                                else:
+                                    TmpMPRTFalling = Tmp[1]
+                                ODFalling += ODStepFalling
                         else:
                             ODFalling += ODStepFalling
                     else:

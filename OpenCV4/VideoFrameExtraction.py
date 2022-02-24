@@ -15,7 +15,7 @@ tGL2 = 11
 GL3 = 192
 tGL3 = 20
 
-fname = r"D:\RES_2436_752_3_FPS_60_GL1_05_000_GL2_06_040_GL3_15_048_GL4_16_008_GL5_20_000.mp4"
+fname = r"D:\Test.mp4"
 
 # Opens the Video file
 cap = cv2.VideoCapture(fname.format(RES_V, RES_H, RES_C,
@@ -49,4 +49,6 @@ ax = fig.add_subplot(111)
 ax.plot(StreamGL, marker="o", markersize=1, linestyle="-", linewidth=0.5)
 fig.show()
 
-_ = input("Enter Any Key To Exit")
+print(set(StreamGL))
+
+#_ = input("Enter Any Key To Exit")
