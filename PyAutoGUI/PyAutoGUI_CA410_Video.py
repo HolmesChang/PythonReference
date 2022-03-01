@@ -129,7 +129,7 @@ def VideoOD (fdir: str="", fname: str="",
             remainder = frame_count % Period
             for Condition in Conditions:
                 if (remainder < Condition[0]):
-                    img[:] = Condition[1]
+                    img[:, :, 0] = Condition[1]
                     writer.writeFrame(img.copy())  #write the frame as RGB not BGR
                     break
 
@@ -159,7 +159,7 @@ def ActivateTargetWindow (wins, targetTitle, wait=0.5):
     
     return False
 
-def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment\Sample_001_Center_20220224_OD_002",
+def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment\Sample_001_Center_20220226_OD_B",
               fname: str="", RES_Time: np.float64=0.00001, tFrame: np.float64=0.016667, UnitRT: np.float64=0.001, Thres: np.float64=0.0025, Method: str="Median", Conditions: List[List[np.uint8]]=[]):
     if (fname == ""):
         print("Please Input Correct File Name")
@@ -268,15 +268,15 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
         print("From {:03} To {:03} To {:03} No UnderShooting".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
         for (Index, Point) in enumerate(PointTransition[0:-1]):
             if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90")):
-                RisingTime += (PointTransition[Index+1][1] - Point[1])
+                RisingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                 CntRisingEdge += 1
                 continue
             if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10")):
-                FallingTime += (PointTransition[Index+1][1] - Point[1])
+                FallingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                 CntFallingEdge += 1
                 continue
         
-        return ((1.25 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (1.25 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
+        return ((1 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (1 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
     elif (IsDataOS and (not IsDataUS)):
         if (Max <= (Min_Plateau+1.1*(Max_Plateau-Min_Plateau))):
             print("From {:03} To {:03} To {:03} OverShooting Less Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
@@ -286,21 +286,21 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
                         ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
                         if ((ListIndexPeak[0][0]-Index) < 2*tFrame):
-                            RisingTime += (ListIndexPeak[0][0] - Point[1])
+                            RisingTime += 1.125 * (PointTransition[Index+1][1] - Point[1]) + (ListIndexPeak[0][0] - PointTransition[Index+1][1])
                             CntRisingEdge += 1
                         else:
-                            RisingTime += (PointTransition[Index+1][1] - Point[1])
+                            RisingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                             CntRisingEdge += 1
                         continue
                 except Exception as e:
                     print(e)
                     continue
                 if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10")):
-                    FallingTime += (PointTransition[Index+1][1] - Point[1])
+                    FallingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                     CntFallingEdge += 1
                     continue
             
-            return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1.25 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
+            return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
         else:
             print("From {:03} To {:03} To {:03} OverShooting More Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
             print("From {:03} To {:03} To {:03} No UnderShooting".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
@@ -314,60 +314,69 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     print(e)
                     continue
                 if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10")):
-                    FallingTime += (PointTransition[Index+1][1] - Point[1])
+                    FallingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                     CntFallingEdge += 1
                     continue
             
-            return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1.25 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
+            return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
     elif ((not IsDataOS) and (IsDataUS)):
         if (Min >= (Min_Plateau-0.1*(Max_Plateau-Min_Plateau))):
             print("From {:03} To {:03} To {:03} No OverShooting".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
             print("From {:03} To {:03} To {:03} UnderShooting Less Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
             for (Index, Point) in enumerate(PointTransition[0:-2]):
                 if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90")):
-                    RisingTime += (PointTransition[Index+1][1] - Point[1])
+                    RisingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                     CntRisingEdge += 1
                     continue
                 try:
                     if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
-                        ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
+                        ListIndexPeak = np.where(Y_New_LPF_60Hz == np.min(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
                         if ((ListIndexPeak[0][0]-Index) < 1.5*tFrame):
-                            FallingTime += (ListIndexPeak[0][0] - Point[1])
+                            FallingTime += 1.125 * (PointTransition[Index+1][1] - Point[1]) + (ListIndexPeak[0][0] - PointTransition[Index+1][1])
                             CntFallingEdge += 1
                         else:
-                            FallingTime += (PointTransition[Index+1][1] - Point[1])
+                            FallingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                             CntFallingEdge += 1
                         continue
                 except Exception as e:
                     print(e)
                     continue
             
-            return ((1.25 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
+            return ((1 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
         else:
             print("From {:03} To {:03} To {:03} No OverShooting".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
             print("From {:03} To {:03} To {:03} UnderShooting More Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
             for (Index, Point) in enumerate(PointTransition[0:-2]):
                 if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90")):
-                    RisingTime += (PointTransition[Index+1][1] - Point[1])
+                    RisingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                     CntRisingEdge += 1
                     continue
                 try:
                     if ((Point[0] == "90") and (PointTransition[Index+2][0] == "US") and (PointTransition[Index+3][0] == "US")):
                         FallingTime += (PointTransition[Index+3][1] - Point[1])
                         CntFallingEdge += 1
-                        continue
+                    elif ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
+                        print("Not Able To Find US Point")
+                        ListIndexPeak = np.where(Y_New_LPF_60Hz == np.min(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
+                        if ((ListIndexPeak[0][0]-Index) < 1.5*tFrame):
+                            FallingTime += 1.125 * (PointTransition[Index+1][1] - Point[1]) + (ListIndexPeak[0][0] - PointTransition[Index+1][1])
+                            CntFallingEdge += 1
+                        else:
+                            FallingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
+                            CntFallingEdge += 1
+                    continue
                 except Exception as e:
                     print(e)
                     continue
             
-            return ((1.25 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
+            return ((1 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
     else:
         for (Index, Point) in enumerate(PointTransition[0:-2]):
             # Rising
             if (Max < Max_Plateau):
                 print("From {:03} To {:03} To {:03} No OverShooting".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
                 if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90")):
-                    RisingTime += (PointTransition[Index+1][1] - Point[1])
+                    RisingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                     CntRisingEdge += 1
                     continue
             elif (Max <= (Min_Plateau+1.1*(Max_Plateau-Min_Plateau))):
@@ -376,10 +385,10 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     if ((Point[0] == "10") and (PointTransition[Index+1][0] == "90") and (PointTransition[Index+2][0] == "90")):
                         ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
                         if ((ListIndexPeak[0][0]-Index) < 1.5*tFrame):
-                            RisingTime += (ListIndexPeak[0][0] - Point[1])
+                            RisingTime += 1.125 * (PointTransition[Index+1][1] - Point[1]) + (ListIndexPeak[0][0] - PointTransition[Index+1][1])
                             CntRisingEdge += 1
                         else:
-                            RisingTime += (PointTransition[Index+1][1] - Point[1])
+                            RisingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                             CntRisingEdge += 1
                         continue
                 except Exception as e:
@@ -399,19 +408,19 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
             if (Min > Min_Plateau):
                 print("From {:03} To {:03} To {:03} No UnderShooting".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
                 if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10")):
-                    FallingTime += (PointTransition[Index+1][1] - Point[1])
+                    FallingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                     CntFallingEdge += 1
                     continue
             elif (Min >= (Min_Plateau-0.1*(Max_Plateau-Min_Plateau))):
                 print("From {:03} To {:03} To {:03} UnderShooting Less Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
                 try:
                     if ((Point[0] == "90") and (PointTransition[Index+1][0] == "10") and (PointTransition[Index+2][0] == "10")):
-                        ListIndexPeak = np.where(Y_New_LPF_60Hz == np.max(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
+                        ListIndexPeak = np.where(Y_New_LPF_60Hz == np.min(Y_New_LPF_60Hz[PointTransition[Index+1][1]:PointTransition[Index+2][1]]))
                         if ((ListIndexPeak[0][0]-Index) < 1.5*tFrame):
-                            FallingTime += (ListIndexPeak[0][0] - Point[1])
+                            FallingTime += 1.125 * (PointTransition[Index+1][1] - Point[1]) + (ListIndexPeak[0][0] - PointTransition[Index+1][1])
                             CntFallingEdge += 1
                         else:
-                            FallingTime += (PointTransition[Index+1][1] - Point[1])
+                            FallingTime += 1.25 * (PointTransition[Index+1][1] - Point[1])
                             CntFallingEdge += 1
                         continue
                 except Exception as e:
