@@ -30,16 +30,25 @@ clock = TicToc()
 # Sourcing Of Measurement Table Of GTG RT
 pairs = []
 tmp = []
-for GL1 in np.append(np.arange(0, 255, 48), 255):
-    for GL2 in np.append(np.arange(GL1, 255, 48), 255):
+Pattern = "OD" #"GTG", "OD", "DGM", "Single"
+if ((Pattern == "GTG") or (Pattern == "OD")):
+    for GL1 in np.append(np.arange(0, 255, 48), 255):
+        for GL2 in np.append(np.arange(GL1, 255, 48), 255):
+            tmp = []
+            if (GL2 == GL1):
+                continue
+            
+            tmp.append(GL1)
+            tmp.append(GL2)
+            pairs.append(tmp)
+elif (Pattern == "DGM"):
+    for GL1 in np.append(np.arange(0, 255, 8), 254):
         tmp = []
-        if (GL2 == GL1):
-            continue
-        
         tmp.append(GL1)
-        tmp.append(GL2)
+        tmp.append(GL1+1)
         pairs.append(tmp)
-#pairs = [[144, 192]]
+elif (Pattern == "Single"):
+    pairs = [[192, 193]]
 
 EnOD = True
 EnODAutoOptimize = True
@@ -51,6 +60,8 @@ ODEndRising = 32
 ODStartFalling = +8
 ODStepFalling = -2
 ODEndFalling = -32
+ODUpperLimit = 288
+ODLowerLimit = 0
 FactorRising = 1
 FactorFalling = 1
 MPRTRisingLocalMinCntLimit = 2
@@ -60,11 +71,49 @@ TmpOD["From"] = 0
 TmpOD["To"] = 0
 TmpOD["OD"] = 0
 ODTable = []
+ODCriterion = 1.05
 
-imgtest = np.zeros((2436, 752, 3), dtype=np.uint8)
+RES_V = 2436
+RES_H = 752
+RES_C = 3
+imgtest = np.zeros((RES_V, RES_H, RES_C), dtype=np.uint8)
+imgR = np.empty((RES_V, RES_H, RES_C), dtype=bool)
+imgG = np.empty((RES_V, RES_H, RES_C), dtype=bool)
+imgB = np.empty((RES_V, RES_H, RES_C), dtype=bool)
+imgR[:] = False
+imgG[:] = False
+imgB[:] = False
+for i in np.arange(0, RES_V, 2):
+    for j in np.arange(0, RES_H, 4):
+        if ((i%2) == 0):
+            imgR[i, j, 2] = True
+            imgR[i, j+1, 1] = True
+            imgR[i, j+2, 0] = True
+            
+            imgG[i, j, 1] = True
+            imgG[i, j+1, [0, 2]] = True
+            imgG[i, j+2, 1] = True
+            imgG[i, j+3, [0, 2]] = True
+            
+            imgB[i, j, 0] = True
+            imgB[i, j+2, 2] = True
+            imgB[i, j+3, 1] = True
+        else:
+            imgB[i, j, 2] = True
+            imgB[i, j+1, 1] = True
+            imgB[i, j+2, 0] = True
+            
+            imgG[i, j, 1] = True
+            imgG[i, j+1, [0, 2]] = True
+            imgG[i, j+2, 1] = True
+            imgG[i, j+3, [0, 2]] = True
+            
+            imgR[i, j, 0] = True
+            imgR[i, j+2, 2] = True
+            imgR[i, j+3, 1] = True
 
 RES_Time = 0.00001
-tFrame = 0.016667
+tFrame = 0.016667 #0.016667 #0.033333
 UnitRT = 0.001
 
 # ================================================== #
@@ -73,7 +122,8 @@ UnitRT = 0.001
 def VideoOD (fdir: str="", fname: str="",
              RES_V: int=None, RES_H: int=None, RES_C: int=None,
              FPS: int=60, Duration: int=3,
-             Conditions: List[List[np.uint8]]=[], lib: str="OpenCV"):
+             Conditions: List[List[np.uint8]]=[], lib: str="OpenCV",
+             EnImageHalfToning: bool=False, GLLowerLimit: int=0, GLUpperLimit: int=192):
     width = RES_H 
     height = RES_V
     channel = RES_C
@@ -129,7 +179,7 @@ def VideoOD (fdir: str="", fname: str="",
             remainder = frame_count % Period
             for Condition in Conditions:
                 if (remainder < Condition[0]):
-                    img[:, :, 0] = Condition[1]
+                    img[:] = Condition[1]
                     writer.writeFrame(img.copy())  #write the frame as RGB not BGR
                     break
 
@@ -159,7 +209,7 @@ def ActivateTargetWindow (wins, targetTitle, wait=0.5):
     
     return False
 
-def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment\Sample_001_Center_20220226_OD_B",
+def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\Algorithm\DIQ\Experiment\Sample_001_Center_20220307_OD_W_60Hz_ODCriterion_{}_ODFrameWork".format(ODCriterion),
               fname: str="", RES_Time: np.float64=0.00001, tFrame: np.float64=0.016667, UnitRT: np.float64=0.001, Thres: np.float64=0.0025, Method: str="Median", Conditions: List[List[np.uint8]]=[]):
     if (fname == ""):
         print("Please Input Correct File Name")
@@ -276,7 +326,7 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                 CntFallingEdge += 1
                 continue
         
-        return ((1 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (1 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
+        return ((1 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (1 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))), (Max-Min_Plateau)/(Max_Plateau-Min_Plateau), (Min-Max_Plateau)/(Min_Plateau-Max_Plateau))
     elif (IsDataOS and (not IsDataUS)):
         if (Max <= (Min_Plateau+1.1*(Max_Plateau-Min_Plateau))):
             print("From {:03} To {:03} To {:03} OverShooting Less Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
@@ -300,7 +350,7 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     CntFallingEdge += 1
                     continue
             
-            return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
+            return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))), (Max-Min_Plateau)/(Max_Plateau-Min_Plateau), (Min-Max_Plateau)/(Min_Plateau-Max_Plateau))
         else:
             print("From {:03} To {:03} To {:03} OverShooting More Than 10% ".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
             print("From {:03} To {:03} To {:03} No UnderShooting".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
@@ -318,7 +368,7 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     CntFallingEdge += 1
                     continue
             
-            return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))))
+            return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (1 * (FallingTime / CntFallingEdge / (UnitRT/RES_Time))), (Max-Min_Plateau)/(Max_Plateau-Min_Plateau), (Min-Max_Plateau)/(Min_Plateau-Max_Plateau))
     elif ((not IsDataOS) and (IsDataUS)):
         if (Min >= (Min_Plateau-0.1*(Max_Plateau-Min_Plateau))):
             print("From {:03} To {:03} To {:03} No OverShooting".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
@@ -342,7 +392,7 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     print(e)
                     continue
             
-            return ((1 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
+            return ((1 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)), (Max-Min_Plateau)/(Max_Plateau-Min_Plateau), (Min-Max_Plateau)/(Min_Plateau-Max_Plateau))
         else:
             print("From {:03} To {:03} To {:03} No OverShooting".format(Conditions[0][1], Conditions[1][1], Conditions[2][1]))
             print("From {:03} To {:03} To {:03} UnderShooting More Than 10%".format(Conditions[2][1], Conditions[3][1], Conditions[4][1]))
@@ -369,7 +419,7 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     print(e)
                     continue
             
-            return ((1 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
+            return ((1 * (RisingTime / CntRisingEdge / (UnitRT/RES_Time))), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)), (Max-Min_Plateau)/(Max_Plateau-Min_Plateau), (Min-Max_Plateau)/(Min_Plateau-Max_Plateau))
     else:
         for (Index, Point) in enumerate(PointTransition[0:-2]):
             # Rising
@@ -437,7 +487,7 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\DIQ\Experiment
                     print(e)
                     continue
         
-        return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)))
+        return ((RisingTime / CntRisingEdge / (UnitRT/RES_Time)), (FallingTime / CntFallingEdge / (UnitRT/RES_Time)), (Max-Min_Plateau)/(Max_Plateau-Min_Plateau), (Min-Max_Plateau)/(Min_Plateau-Max_Plateau))
 
 # ================================================== #
 # Testing Of This Module
@@ -509,18 +559,20 @@ if (__name__ == "__main__"):
                 if (not os.path.isfile(fdir_video + "\\" + fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]))):
                     VideoOD(RES_V=RES_V, RES_H=RES_H, RES_C=RES_C, lib=lib,
                             FPS=FPS, Duration=Duration, Conditions=Conditions,
-                            fdir=fdir_video, fname=fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]))
+                            fdir=fdir_video, fname=fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]),
+                            EnImageHalfToning=True, GLLowerLimit=0, GLUpperLimit=192)
             else:
                 Conditions = [[tEnd_GL1, pair[0]],
-                              [tEnd_GL2, np.clip(pair[1]+ODRising, 0, 255)],
+                              [tEnd_GL2, np.clip(pair[1]+ODRising, ODLowerLimit, ODUpperLimit)],
                               [tEnd_GL3, pair[1]],
-                              [tEnd_GL4, np.clip(pair[0]+ODFalling, 0, 255)],
+                              [tEnd_GL4, np.clip(pair[0]+ODFalling, ODLowerLimit, ODUpperLimit)],
                               [tEnd_GL5, pair[0]]]
                 
                 if (not os.path.isfile(fdir_video + "\\" + fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]))):
                     VideoOD(RES_V=RES_V, RES_H=RES_H, RES_C=RES_C, lib=lib,
                             FPS=FPS, Duration=Duration, Conditions=Conditions,
-                            fdir=fdir_video, fname=fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]))
+                            fdir=fdir_video, fname=fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]),
+                            EnImageHalfToning=True, GLLowerLimit=0, GLUpperLimit=192)
             
             # -------------------------------------------------- #
             # Displaying Testing Video
@@ -664,7 +716,7 @@ if (__name__ == "__main__"):
                 IsODFallingDone = True
             else:
                 if (EnODAutoOptimize):
-                    Tmp = CalcMPRT(fname=(fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("avi", "csv"), Conditions=Conditions)
+                    Tmp = CalcMPRT(fname=(fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1])).replace("avi", "csv"), RES_Time=RES_Time, tFrame=tFrame, Conditions=Conditions)
                     MPRTRisingBuf[int(MPRTRisingBufPointer)] = Tmp[0]
                     MPRTRisingBufPointer += 1
                     MPRTRisingBufPointer %= 3
@@ -673,74 +725,98 @@ if (__name__ == "__main__"):
                     MPRTFallingBufPointer %= 3
                 # Checking If Rising OD Done
                 if (not IsODRisingDone):
-                    if ((ODRising < ODEndRising) and (not (Conditions[1][1] == 255))):
-                        if (EnODAutoOptimize):
-                            print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[0][1], Conditions[2][1], Conditions[1][1], Tmp[0]))
-                            if (TmpMPRTRising > FactorRising*Tmp[0]):
-                                TmpMPRTRising = Tmp[0]
-                                ODRising += ODStepRising
-                            else:
-                                if ((MPRTRisingBuf[int((MPRTRisingBufPointer+2)%3)] > MPRTRisingBuf[int((MPRTRisingBufPointer+1)%3)]) and (MPRTRisingBuf[int((MPRTRisingBufPointer+2)%3)] > MPRTRisingBuf[int((MPRTRisingBufPointer+0)%3)])):
-                                    TmpOD["From"] = Conditions[0][1]
-                                    TmpOD["To"] = Conditions[2][1]
-                                    TmpOD["OD"] = Conditions[1][1] - 2*ODStepRising
-                                    TmpOD["MPRT"] = MPRTRisingBuf[int(MPRTRisingBufPointer)]#TmpMPRTRising
-                                    ODTable.append(TmpOD.copy())
-                                    IsODRisingDone = True
-                                else:
+                    # Adding OD Criterion
+                    if (Tmp[2] >= ODCriterion):
+                        print("Rising OverShooting")
+                        print(Tmp[2])
+                        print(ODCriterion)
+                        TmpOD["From"] = Conditions[0][1]
+                        TmpOD["To"] = Conditions[2][1]
+                        TmpOD["OD"] = Conditions[1][1] - ODStepRising
+                        TmpOD["MPRT"] = MPRTRisingBuf[int((MPRTRisingBufPointer+2)%3)]#TmpMPRTRising
+                        ODTable.append(TmpOD.copy())
+                        IsODRisingDone = True
+                    else:
+                        if ((ODRising < ODEndRising) and (not (Conditions[1][1] == 255))):
+                            if (EnODAutoOptimize):
+                                print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[0][1], Conditions[2][1], Conditions[1][1], Tmp[0]))
+                                if (TmpMPRTRising > FactorRising*Tmp[0]):
                                     TmpMPRTRising = Tmp[0]
                                     ODRising += ODStepRising
-                        else:
-                            ODRising += ODStepRising
-                    else:
-                        if (EnODAutoOptimize):
-                            print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[0][1], Conditions[2][1], Conditions[1][1], Tmp[0]))
-                            if (TmpMPRTRising > FactorRising*Tmp[0]):
-                                TmpMPRTRising = Tmp[0]
-                                TmpOD["OD"] = Conditions[1][1]
+                                else:
+                                    if ((MPRTRisingBuf[int((MPRTRisingBufPointer+2)%3)] > MPRTRisingBuf[int((MPRTRisingBufPointer+1)%3)]) and (MPRTRisingBuf[int((MPRTRisingBufPointer+2)%3)] > MPRTRisingBuf[int((MPRTRisingBufPointer+0)%3)])):
+                                        TmpOD["From"] = Conditions[0][1]
+                                        TmpOD["To"] = Conditions[2][1]
+                                        TmpOD["OD"] = Conditions[1][1] - 2*ODStepRising
+                                        TmpOD["MPRT"] = MPRTRisingBuf[int(MPRTRisingBufPointer)]#TmpMPRTRising
+                                        ODTable.append(TmpOD.copy())
+                                        IsODRisingDone = True
+                                    else:
+                                        TmpMPRTRising = Tmp[0]
+                                        ODRising += ODStepRising
                             else:
-                                TmpOD["OD"] = Conditions[1][1] - ODStepRising
-                            
-                            TmpOD["From"] = Conditions[0][1]
-                            TmpOD["To"] = Conditions[2][1]
-                            TmpOD["MPRT"] = TmpMPRTRising
-                            ODTable.append(TmpOD.copy())
-                        IsODRisingDone = True
+                                ODRising += ODStepRising
+                        else:
+                            if (EnODAutoOptimize):
+                                print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[0][1], Conditions[2][1], Conditions[1][1], Tmp[0]))
+                                if (TmpMPRTRising > FactorRising*Tmp[0]):
+                                    TmpMPRTRising = Tmp[0]
+                                    TmpOD["OD"] = Conditions[1][1]
+                                else:
+                                    TmpOD["OD"] = Conditions[1][1] - ODStepRising
+                                
+                                TmpOD["From"] = Conditions[0][1]
+                                TmpOD["To"] = Conditions[2][1]
+                                TmpOD["MPRT"] = TmpMPRTRising
+                                ODTable.append(TmpOD.copy())
+                            IsODRisingDone = True
                 # Check If Falling OD Done
                 if (not IsODFallingDone):
-                    if ((ODFalling > ODEndFalling) and (not (Conditions[3][1] == 0))):
-                        if (EnODAutoOptimize):
-                            print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[2][1], Conditions[4][1], Conditions[3][1], Tmp[1]))
-                            if (TmpMPRTFalling > FactorFalling*Tmp[1]):
-                                TmpMPRTFalling = Tmp[1]
-                                ODFalling += ODStepFalling
-                            else:
-                                if ((MPRTFallingBuf[int((MPRTFallingBufPointer+2)%3)] > MPRTFallingBuf[int((MPRTFallingBufPointer+1)%3)]) and (MPRTFallingBuf[int((MPRTFallingBufPointer+2)%3)] > MPRTFallingBuf[int((MPRTFallingBufPointer+0)%3)])):
-                                    TmpOD["From"] = Conditions[2][1]
-                                    TmpOD["To"] = Conditions[4][1]
-                                    TmpOD["OD"] = Conditions[3][1] - 2*ODStepFalling
-                                    TmpOD["MPRT"] = MPRTFallingBuf[int(MPRTFallingBufPointer)] #TmpMPRTFalling
-                                    ODTable.append(TmpOD.copy())
-                                    IsODFallingDone = True
-                                else:
+                    # Adding OD Criterion
+                    if (Tmp[3] >= ODCriterion):
+                        print("Falling OverShooting")
+                        print(Tmp[3])
+                        print(ODCriterion)
+                        TmpOD["From"] = Conditions[2][1]
+                        TmpOD["To"] = Conditions[4][1]
+                        TmpOD["OD"] = Conditions[3][1] - ODStepFalling
+                        TmpOD["MPRT"] = MPRTFallingBuf[int((MPRTFallingBufPointer+2)%3)] #TmpMPRTFalling
+                        ODTable.append(TmpOD.copy())
+                        IsODFallingDone = True
+                    else:
+                        if ((ODFalling > ODEndFalling) and (not (Conditions[3][1] == 0))):
+                            if (EnODAutoOptimize):
+                                print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[2][1], Conditions[4][1], Conditions[3][1], Tmp[1]))
+                                if (TmpMPRTFalling > FactorFalling*Tmp[1]):
                                     TmpMPRTFalling = Tmp[1]
+                                    ODFalling += ODStepFalling
+                                else:
+                                    if ((MPRTFallingBuf[int((MPRTFallingBufPointer+2)%3)] > MPRTFallingBuf[int((MPRTFallingBufPointer+1)%3)]) and (MPRTFallingBuf[int((MPRTFallingBufPointer+2)%3)] > MPRTFallingBuf[int((MPRTFallingBufPointer+0)%3)])):
+                                        TmpOD["From"] = Conditions[2][1]
+                                        TmpOD["To"] = Conditions[4][1]
+                                        TmpOD["OD"] = Conditions[3][1] - 2*ODStepFalling
+                                        TmpOD["MPRT"] = MPRTFallingBuf[int(MPRTFallingBufPointer)] #TmpMPRTFalling
+                                        ODTable.append(TmpOD.copy())
+                                        IsODFallingDone = True
+                                    else:
+                                        TmpMPRTFalling = Tmp[1]
+                                    ODFalling += ODStepFalling
+                            else:
                                 ODFalling += ODStepFalling
                         else:
-                            ODFalling += ODStepFalling
-                    else:
-                        if (EnODAutoOptimize):
-                            print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[2][1], Conditions[4][1], Conditions[3][1], Tmp[1]))
-                            if (TmpMPRTFalling > FactorFalling*Tmp[1]):
-                                TmpMPRTFalling = Tmp[1]
-                                TmpOD["OD"] = Conditions[3][1]
-                            else:
-                                TmpOD["OD"] = Conditions[3][1] - ODStepFalling
-                            
-                            TmpOD["From"] = Conditions[2][1]
-                            TmpOD["To"] = Conditions[4][1]
-                            TmpOD["MPRT"] = TmpMPRTFalling
-                            ODTable.append(TmpOD.copy())
-                        IsODFallingDone = True
+                            if (EnODAutoOptimize):
+                                print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[2][1], Conditions[4][1], Conditions[3][1], Tmp[1]))
+                                if (TmpMPRTFalling > FactorFalling*Tmp[1]):
+                                    TmpMPRTFalling = Tmp[1]
+                                    TmpOD["OD"] = Conditions[3][1]
+                                else:
+                                    TmpOD["OD"] = Conditions[3][1] - ODStepFalling
+                                
+                                TmpOD["From"] = Conditions[2][1]
+                                TmpOD["To"] = Conditions[4][1]
+                                TmpOD["MPRT"] = TmpMPRTFalling
+                                ODTable.append(TmpOD.copy())
+                            IsODFallingDone = True
             
             after = time.time()
             
