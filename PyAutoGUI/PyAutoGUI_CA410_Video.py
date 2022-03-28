@@ -30,10 +30,10 @@ clock = TicToc()
 # Sourcing Of Measurement Table Of GTG RT
 pairs = []
 tmp = []
-Pattern = "OD" #"GTG", "OD", "DGM", "Single"
+Pattern = "Single" #"GTG", "OD", "DGM", "Single"
 if ((Pattern == "GTG") or (Pattern == "OD")):
-    for GL1 in np.append(np.arange(0, 255, 48), 255):
-        for GL2 in np.append(np.arange(GL1, 255, 48), 255):
+    for GL1 in np.append(np.arange(0, 255, 16), 255):
+        for GL2 in np.append(np.arange(GL1, 255, 16), 255):
             tmp = []
             if (GL2 == GL1):
                 continue
@@ -42,16 +42,16 @@ if ((Pattern == "GTG") or (Pattern == "OD")):
             tmp.append(GL2)
             pairs.append(tmp)
 elif (Pattern == "DGM"):
-    for GL1 in np.append(np.arange(0, 255, 8), 254):
+    for GL1 in np.append(np.arange(0, 235, 8), 235):
         tmp = []
         tmp.append(GL1)
-        tmp.append(GL1+1)
+        tmp.append(GL1+20)
         pairs.append(tmp)
 elif (Pattern == "Single"):
-    pairs = [[192, 193]]
+    pairs = [[0, 192]]
 
-EnOD = True
-EnODAutoOptimize = True
+EnOD = False
+EnODAutoOptimize = False
 IsODRisingDone = False
 IsODFallingDone = False
 ODStartRising = -8
@@ -123,13 +123,20 @@ def VideoOD (fdir: str="", fname: str="",
              RES_V: int=None, RES_H: int=None, RES_C: int=None,
              FPS: int=60, Duration: int=3,
              Conditions: List[List[np.uint8]]=[], lib: str="OpenCV",
-             EnImageHalfToning: bool=False, GLLowerLimit: int=0, GLUpperLimit: int=192):
+             EnImageHalfToning: bool=False, GLLowerLimit: int=0, GLUpperLimit: int=192, BitImageHalfToning: int=2):
     width = RES_H 
     height = RES_V
     channel = RES_C
 
     fps = FPS
     sec = Duration
+    
+    Mask = [
+        [0, 0, 0, 0],
+        [1, 0, 0, 0],
+        [1, 1, 0, 0],
+        [1, 1, 1, 0]
+    ]
     
     #print("StreamGL:")
     #for Condition in Conditions:
@@ -179,7 +186,31 @@ def VideoOD (fdir: str="", fname: str="",
             remainder = frame_count % Period
             for Condition in Conditions:
                 if (remainder < Condition[0]):
-                    img[:] = Condition[1]
+                    if (EnImageHalfToning):
+                        tmpInteger = (Condition[1] * GLUpperLimit / 256) * (2**BitImageHalfToning)
+                        tmpDecimal = tmpInteger % (2**BitImageHalfToning)
+                        tmpInteger //= (2**BitImageHalfToning)
+                        
+                        tmpMask = Mask[int(tmpDecimal)]
+                        
+                        #print(tmpInteger)
+                        #print(tmpDecimal)
+                        #print(tmpMask)
+                        
+                        """
+                        for i in np.arange(RES_V):
+                            for j in np.arange(RES_H):
+                                #ttmpMask = tmpMask[int(2*(i%2)+(j%2)):] + tmpMask[:int(2*(i%2)+(j%2))]
+                                img[i, j, :] = np.uint8(tmpInteger + tmpMask[int(2*(i%2)+(j%2))])
+                                #print(tmpInteger + tmpMask[int(2*(i%2)+(j%2))])
+                        """
+                        img[0::2, 0::2, :] = np.uint8(tmpInteger + tmpMask[0])
+                        img[0::2, 1::2, :] = np.uint8(tmpInteger + tmpMask[1])
+                        img[1::2, 0::2, :] = np.uint8(tmpInteger + tmpMask[2])
+                        img[1::2, 1::2, :] = np.uint8(tmpInteger + tmpMask[3])
+                    else:
+                        img[:] = Condition[1]
+                    
                     writer.writeFrame(img.copy())  #write the frame as RGB not BGR
                     break
 
@@ -209,7 +240,7 @@ def ActivateTargetWindow (wins, targetTitle, wait=0.5):
     
     return False
 
-def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\Algorithm\DIQ\Experiment\Sample_001_Center_20220307_OD_W_60Hz_ODCriterion_{}_ODFrameWork".format(ODCriterion),
+def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\Algorithm\DIQ\Experiment\Sample_001_Center_20220312_OD_W_60Hz_ODCriterion_{}_ODFrameWork_ForDataPolation".format(ODCriterion),
               fname: str="", RES_Time: np.float64=0.00001, tFrame: np.float64=0.016667, UnitRT: np.float64=0.001, Thres: np.float64=0.0025, Method: str="Median", Conditions: List[List[np.uint8]]=[]):
     if (fname == ""):
         print("Please Input Correct File Name")
@@ -261,7 +292,7 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\Algorithm\DIQ\
                 IsZeroStart = False
     
     for Plateau in ListPlateau:
-        if (Plateau[1] < tFrame*100000):
+        if (Plateau[1] < 0.9*tFrame*100000):
             Y_New_Diff[Plateau[0]:np.sum(Plateau)] = Thres
     
     Min_Plateau = np.min((Y_New_LPF_60Hz[1::])[Y_New_Diff == 0])
@@ -306,8 +337,8 @@ def CalcMPRT (fdir: str=r"D:\Project\2D AMOLED Display Technology\Algorithm\DIQ\
     PointTransition.sort(key=lambda x: x[1])
     
     # Debugging
-    for Point in PointTransition:
-        print(Point)
+    #for Point in PointTransition:
+    #    print(Point)
     
     RisingTime = 0
     CntRisingEdge = 0
@@ -560,7 +591,7 @@ if (__name__ == "__main__"):
                     VideoOD(RES_V=RES_V, RES_H=RES_H, RES_C=RES_C, lib=lib,
                             FPS=FPS, Duration=Duration, Conditions=Conditions,
                             fdir=fdir_video, fname=fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]),
-                            EnImageHalfToning=True, GLLowerLimit=0, GLUpperLimit=192)
+                            EnImageHalfToning=False, GLLowerLimit=0, GLUpperLimit=192, BitImageHalfToning=2)
             else:
                 Conditions = [[tEnd_GL1, pair[0]],
                               [tEnd_GL2, np.clip(pair[1]+ODRising, ODLowerLimit, ODUpperLimit)],
@@ -572,7 +603,7 @@ if (__name__ == "__main__"):
                     VideoOD(RES_V=RES_V, RES_H=RES_H, RES_C=RES_C, lib=lib,
                             FPS=FPS, Duration=Duration, Conditions=Conditions,
                             fdir=fdir_video, fname=fname_video.format(RES_V, RES_H, RES_C, FPS, Conditions[0][0], Conditions[0][1], Conditions[1][0], Conditions[1][1], Conditions[2][0], Conditions[2][1], Conditions[3][0], Conditions[3][1], Conditions[4][0], Conditions[4][1]),
-                            EnImageHalfToning=True, GLLowerLimit=0, GLUpperLimit=192)
+                            EnImageHalfToning=True, GLLowerLimit=0, GLUpperLimit=192, BitImageHalfToning=2)
             
             # -------------------------------------------------- #
             # Displaying Testing Video
@@ -737,7 +768,7 @@ if (__name__ == "__main__"):
                         ODTable.append(TmpOD.copy())
                         IsODRisingDone = True
                     else:
-                        if ((ODRising < ODEndRising) and (not (Conditions[1][1] == 255))):
+                        if ((ODRising < ODEndRising) and (not (Conditions[1][1] == ODUpperLimit))):
                             if (EnODAutoOptimize):
                                 print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[0][1], Conditions[2][1], Conditions[1][1], Tmp[0]))
                                 if (TmpMPRTRising > FactorRising*Tmp[0]):
@@ -784,7 +815,7 @@ if (__name__ == "__main__"):
                         ODTable.append(TmpOD.copy())
                         IsODFallingDone = True
                     else:
-                        if ((ODFalling > ODEndFalling) and (not (Conditions[3][1] == 0))):
+                        if ((ODFalling > ODEndFalling) and (not (Conditions[3][1] == ODLowerLimit))):
                             if (EnODAutoOptimize):
                                 print("From GL{:03} To GL{:03} W/I OD {:02}: MPRT = {}".format(Conditions[2][1], Conditions[4][1], Conditions[3][1], Tmp[1]))
                                 if (TmpMPRTFalling > FactorFalling*Tmp[1]):
